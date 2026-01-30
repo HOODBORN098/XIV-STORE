@@ -1,0 +1,438 @@
+import { useState, useEffect } from 'react';
+import { Button } from '../components/ui/Button';
+import { useCart } from '../context/CartContext';
+import { Page } from '../types';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+// Replace with your actual publishable key
+const stripePromise = loadStripe('pk_test_placeholder');
+
+function CheckoutForm({ onSuccess }: { onSuccess: () => void }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [message, setMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: any) => {
+    e.preventDefault();
+
+    if (!stripe || !elements) return;
+
+    setIsLoading(true);
+
+    const { error } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: window.location.origin,
+      },
+      redirect: 'if_required',
+    });
+
+    if (error) {
+      setMessage(error.message || 'An unexpected error occurred.');
+    } else {
+      onSuccess();
+    }
+
+    setIsLoading(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <PaymentElement />
+      {message && <div className="text-red-500 mt-4 text-sm">{message}</div>}
+      <div className="mt-8">
+        <Button size="lg" disabled={isLoading || !stripe || !elements} isLoading={isLoading}>
+          Pay Now
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+const Input = ({ label, value, onChange, type = 'text', placeholder, name, autoComplete }: { label: string; value?: string; onChange?: (val: string) => void; type?: string; placeholder?: string; name?: string; autoComplete?: string }) => (
+  <div className="mb-6">
+    <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
+      {label}
+    </label>
+    <input
+      type={type}
+      name={name}
+      autoComplete={autoComplete}
+      value={value}
+      onChange={(e) => onChange?.(e.target.value)}
+      placeholder={placeholder}
+      className="w-full border-b border-gray-300 py-3 text-sm focus:outline-none focus:border-black transition-colors bg-transparent"
+    />
+  </div>
+);
+
+interface CheckoutPageProps {
+  onNavigate: (page: Page) => void;
+}
+
+export function CheckoutPage({ onNavigate }: CheckoutPageProps) {
+  const { items, subtotal } = useCart();
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'mpesa'>('card');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [mpesaLoading, setMpesaLoading] = useState(false);
+  const { clearCart } = useCart();
+  const [clientSecret, setClientSecret] = useState('');
+  const [stripeError, setStripeError] = useState(false);
+
+  // Shipping form state
+  const [shippingInfo, setShippingInfo] = useState({
+    address: '',
+    city: '',
+    postalCode: '',
+    country: ''
+  });
+  const [contactInfo, setContactInfo] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: ''
+  });
+  const [isDetecting, setIsDetecting] = useState(false);
+
+  const detectLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setIsDetecting(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
+          const data = await res.json();
+
+          setShippingInfo(prev => ({
+            ...prev,
+            country: data.countryName || '',
+            city: data.city || data.locality || '',
+            postalCode: data.postcode || ''
+          }));
+        } catch (error) {
+          console.error("Error fetching location data:", error);
+          alert("Failed to get location details. Please enter manually.");
+        } finally {
+          setIsDetecting(false);
+        }
+      },
+      (error) => {
+        setIsDetecting(false);
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            alert("Please allow location access to use this feature.");
+            break;
+          default:
+            alert("Location detection failed.");
+        }
+      }
+    );
+  };
+
+  const shipping = subtotal > 10000 ? 0 : 500;
+  const tax = subtotal * 0.08;
+  const total = subtotal + shipping + tax;
+
+  useEffect(() => {
+    const token = localStorage.getItem('customer_token');
+    if (!token) {
+      alert('You must be logged in to checkout.');
+      onNavigate('customer-login');
+    }
+  }, [onNavigate]);
+
+  const handleMpesaPayment = async () => {
+    if (!phoneNumber) {
+      alert('Please enter a phone number');
+      return;
+    }
+    setMpesaLoading(true);
+    try {
+      const res = await fetch('http://localhost:3000/api/mpesa/stkpush', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber, amount: Math.ceil(total) }) // Mpesa deals in whole numbers usually
+      });
+      await res.json();
+      if (res.ok) {
+        alert(`M-Pesa prompt sent to ${phoneNumber}. Please confirm on your phone.`);
+        clearCart();
+        onNavigate('home');
+      } else {
+        alert('Failed to initiate M-Pesa payment');
+      }
+    } catch (error) {
+      alert('Network error');
+    } finally {
+      setMpesaLoading(false);
+    }
+  };
+
+  const isContactValid = contactInfo.firstName && contactInfo.lastName && contactInfo.email && contactInfo.phone;
+  const isShippingValid = shippingInfo.address && shippingInfo.city && shippingInfo.postalCode && shippingInfo.country;
+
+  const handleStepChange = (newStep: 1 | 2 | 3) => {
+    if (newStep === 3) {
+      if (!isShippingValid) return;
+      setStep(3); // Move to step 3 immediately so user can see payment options
+      // Fetch payment intent asynchronously
+      fetch('http://localhost:3000/api/payment/create-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.clientSecret) {
+            setClientSecret(data.clientSecret);
+          } else {
+            console.warn('No client secret received');
+            setStripeError(true);
+          }
+        })
+        .catch(err => {
+          console.error('Stripe initialization failed:', err);
+          setStripeError(true);
+        });
+    } else {
+      setStep(newStep);
+    }
+  };
+
+  return (
+    <div className="max-w-[1920px] mx-auto px-6 py-12">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-24">
+        {/* Left: Form */}
+        <div className="lg:col-span-7">
+          {/* Steps */}
+          <div className="flex items-center space-x-4 mb-12 text-sm font-medium">
+            <span className={step >= 1 ? 'text-black' : 'text-gray-400'}>Contact</span>
+            <span className="text-gray-300">/</span>
+            <span className={step >= 2 ? 'text-black' : 'text-gray-400'}>Shipping</span>
+            <span className="text-gray-300">/</span>
+            <span className={step >= 3 ? 'text-black' : 'text-gray-400'}>Payment</span>
+          </div>
+
+          {step === 1 && (
+            <div className="animate-fade-in">
+              <h2 className="text-2xl font-bold uppercase tracking-tight mb-8">Contact Information</h2>
+              <div className="grid grid-cols-2 gap-6">
+                <Input
+                  label="First Name"
+                  name="fname"
+                  autoComplete="given-name"
+                  value={contactInfo.firstName}
+                  onChange={(val) => setContactInfo({ ...contactInfo, firstName: val })}
+                />
+                <Input
+                  label="Last Name"
+                  name="lname"
+                  autoComplete="family-name"
+                  value={contactInfo.lastName}
+                  onChange={(val) => setContactInfo({ ...contactInfo, lastName: val })}
+                />
+              </div>
+              <Input
+                label="Email Address"
+                type="email"
+                name="email"
+                autoComplete="email"
+                value={contactInfo.email}
+                onChange={(val) => setContactInfo({ ...contactInfo, email: val })}
+              />
+              <Input
+                label="Phone Number"
+                type="tel"
+                name="phone"
+                autoComplete="tel"
+                value={contactInfo.phone}
+                onChange={(val) => setContactInfo({ ...contactInfo, phone: val })}
+                placeholder="e.g. +254 ..."
+              />
+              <div className="mt-12">
+                <Button
+                  onClick={() => setStep(2)}
+                  size="lg"
+                  disabled={!isContactValid}
+                  title={!isContactValid ? "Please fill in all contact details" : ""}
+                >
+                  Continue to Shipping
+                </Button>
+                {!isContactValid && contactInfo.firstName && (
+                  <p className="text-xs text-red-500 mt-2 italic">Please complete all fields to proceed.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="animate-fade-in">
+              <div className="flex justify-between items-start mb-8">
+                <h2 className="text-2xl font-bold uppercase tracking-tight">Shipping Address</h2>
+                <button
+                  onClick={detectLocation}
+                  disabled={isDetecting}
+                  className="text-xs font-bold uppercase tracking-widest text-black border border-black px-4 py-2 hover:bg-black hover:text-white transition-all disabled:opacity-50"
+                >
+                  {isDetecting ? 'Detecting...' : 'Detect My Location'}
+                </button>
+              </div>
+              <Input
+                label="Address"
+                name="address"
+                autoComplete="address-line1"
+                value={shippingInfo.address}
+                onChange={(val) => setShippingInfo({ ...shippingInfo, address: val })}
+                placeholder="e.g. 123 Luxury Lane"
+              />
+              <div className="grid grid-cols-2 gap-6">
+                <Input
+                  label="City"
+                  name="city"
+                  autoComplete="address-level2"
+                  value={shippingInfo.city}
+                  onChange={(val) => setShippingInfo({ ...shippingInfo, city: val })}
+                />
+                <Input
+                  label="Postal Code"
+                  name="zip"
+                  autoComplete="postal-code"
+                  value={shippingInfo.postalCode}
+                  onChange={(val) => setShippingInfo({ ...shippingInfo, postalCode: val })}
+                />
+              </div>
+              <Input
+                label="Country"
+                name="country"
+                autoComplete="country-name"
+                value={shippingInfo.country}
+                onChange={(val) => setShippingInfo({ ...shippingInfo, country: val })}
+              />
+              <div className="mt-12 flex items-center gap-4">
+                <button onClick={() => setStep(1)} className="text-sm font-medium underline">Back</button>
+                <Button
+                  onClick={() => handleStepChange(3)}
+                  size="lg"
+                  disabled={!isShippingValid}
+                >
+                  Continue to Payment
+                </Button>
+              </div>
+              {!isShippingValid && shippingInfo.address && (
+                <p className="text-xs text-red-500 mt-2 italic">Please provide full shipping details to proceed.</p>
+              )}
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="animate-fade-in">
+              <h2 className="text-2xl font-bold uppercase tracking-tight mb-8">Payment</h2>
+              <div className="flex space-x-4 mb-8">
+                <button
+                  className={`flex-1 py-4 border ${paymentMethod === 'card' ? 'border-black bg-black text-white' : 'border-gray-200'} font-medium uppercase tracking-wider transition-colors`}
+                  onClick={() => setPaymentMethod('card')}
+                >
+                  Card
+                </button>
+                <button
+                  className={`flex-1 py-4 border ${paymentMethod === 'mpesa' ? 'border-green-600 bg-green-600 text-white' : 'border-gray-200'} font-medium uppercase tracking-wider transition-colors`}
+                  onClick={() => setPaymentMethod('mpesa')}
+                >
+                  M-Pesa
+                </button>
+              </div>
+
+              {paymentMethod === 'card' ? (
+                <div className="bg-gray-50 p-6 rounded mb-8 border border-gray-200">
+                  {clientSecret ? (
+                    <Elements options={{ clientSecret }} stripe={stripePromise}>
+                      <CheckoutForm onSuccess={() => alert('Order Placed Successfully!')} />
+                    </Elements>
+                  ) : stripeError ? (
+                    <div className="text-sm text-red-500 bg-red-50 p-4 border border-red-100 rounded">
+                      Card payment is currently unavailable. Please try M-Pesa or contact support.
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 text-sm text-gray-500">
+                      <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                      Loading card payment options...
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4 animate-fade-in-up bg-gray-50 p-6 rounded mb-8 border border-green-100">
+                  <div className="bg-green-50 p-4 border border-green-100 rounded-lg">
+                    <p className="text-sm text-green-800 mb-2 font-bold">Lipa na M-Pesa</p>
+                    <p className="text-xs text-green-700">Enter your M-Pesa phone number below. You will receive a prompt on your phone to complete the payment.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Phone Number</label>
+                    <input
+                      type="tel"
+                      placeholder="0712345678"
+                      className="w-full border-b border-gray-300 py-2 focus:outline-none focus:border-green-600 transition-colors bg-white px-2"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                    />
+                  </div>
+                  <div className="mt-8">
+                    <Button
+                      size="lg"
+                      fullWidth
+                      onClick={handleMpesaPayment}
+                      isLoading={mpesaLoading}
+                    // Manual style override for Green button
+                    >
+                      <span className="text-white">Pay with M-Pesa</span>
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <div className="mt-12 flex items-center gap-4">
+                <button onClick={() => setStep(2)} className="text-sm font-medium underline">Back</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right: Summary */}
+        <div className="lg:col-span-5">
+          <div className="bg-gray-50 p-8 lg:p-12 sticky top-24">
+            <h3 className="text-lg font-bold uppercase tracking-wide mb-8">Order Summary</h3>
+            <div className="space-y-6 mb-8 max-h-96 overflow-y-auto pr-2">
+              {items.map((item) => (
+                <div key={`${item.id}-${item.selectedSize}`} className="flex gap-4">
+                  <div className="w-16 h-20 bg-white flex-shrink-0">
+                    <img src={item.images[0]} alt={item.name} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium">{item.name}</h4>
+                    <p className="text-xs text-gray-500 mt-1">Size: {item.selectedSize} / {item.selectedColor}</p>
+                    <p className="text-xs text-gray-500 mt-1">Qty: {item.quantity}</p>
+                  </div>
+                  <span className="text-sm font-medium">Ksh {(item.price * item.quantity).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-gray-200 pt-6 space-y-3 text-sm">
+              <div className="flex justify-between"><span>Subtotal</span><span>Ksh {subtotal.toLocaleString()}</span></div>
+              <div className="flex justify-between"><span>Shipping</span><span>{shipping === 0 ? 'Free' : `Ksh ${shipping.toLocaleString()}`}</span></div>
+              <div className="flex justify-between"><span>Tax</span><span>Ksh {tax.toLocaleString()}</span></div>
+              <div className="border-t border-gray-200 pt-4 flex justify-between text-lg font-bold">
+                <span>Total</span><span>Ksh {total.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,315 @@
+import { useState, useEffect } from 'react';
+import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '../components/ui/Button';
+import { ProductCard } from '../components/ui/ProductCard';
+import { products } from '../data/products';
+import { Page, Product } from '../types';
+interface HomePageProps {
+  onNavigate: (page: Page) => void;
+  onProductClick: (product: Product) => void;
+}
+export function HomePage({ onNavigate, onProductClick }: HomePageProps) {
+  const featuredProducts = products.filter((p) => p.featured).slice(0, 4);
+  const newArrivals = products.filter((p) => p.newArrival).slice(0, 4);
+
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  const slides = [
+    {
+      image: "https://images.unsplash.com/photo-1618331835717-801e976710b2?auto=format&fit=crop&q=80&w=2070",
+      title: "Elegance is Elimination",
+      subtitle: "Winter Collection 2026",
+      description: "Discover our latest collection of premium essentials. Designed for the modern minimalist."
+    },
+    {
+      image: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&q=80&w=2000",
+      title: "Obsidian Series",
+      subtitle: "New Arrivals",
+      description: "A masterpiece of tailoring, featuring our deep velvet and structured shoulders."
+    },
+    {
+      image: "https://images.unsplash.com/photo-1543076447-215ad9ba6923?auto=format&fit=crop&q=80&w=2000",
+      title: "The Art of Texture",
+      subtitle: "Luxury Fabrics",
+      description: "Italian cashmere and Japanese denim. Quality you can feel in every stitch."
+    }
+  ];
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % slides.length);
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [slides.length]);
+
+  const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % slides.length);
+  const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
+
+  return (
+    <div className="w-full">
+      {/* Hero Section */}
+      {/* Hero Section */}
+      <section className="relative h-[95vh] w-full overflow-hidden bg-black">
+        {slides.map((slide, index) => (
+          <div
+            key={index}
+            className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${index === currentSlide ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
+          >
+            <div className="absolute inset-0">
+              <img
+                src={slide.image}
+                alt={slide.title}
+                className={`w-full h-full object-cover transition-transform duration-[10000ms] ${index === currentSlide ? 'scale-110' : 'scale-100'}`}
+              />
+              <div className="absolute inset-0 bg-black/40 mix-blend-multiply" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+            </div>
+
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white px-6">
+              <span className={`inline-block px-4 py-1.5 mb-8 border border-white/30 backdrop-blur-md rounded-full text-xs font-semibold tracking-[0.2em] uppercase transition-all duration-700 delay-300 ${index === currentSlide ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+                {slide.subtitle}
+              </span>
+              <h1 className={`text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-8 font-serif transition-all duration-700 delay-500 ${index === currentSlide ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+                {slide.title.includes(' ') ? (
+                  <>
+                    {slide.title.split(' ')[0]}<br className="hidden md:block" /> {slide.title.split(' ').slice(1).join(' ')}
+                  </>
+                ) : slide.title}
+              </h1>
+              <p className={`text-lg md:text-xl font-light mb-12 max-w-2xl mx-auto text-white/90 transition-all duration-700 delay-700 ${index === currentSlide ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+                {slide.description}
+              </p>
+              <div className={`flex flex-col sm:flex-row gap-6 transition-all duration-700 delay-1000 ${index === currentSlide ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="bg-white text-black hover:bg-gray-200 border-none min-w-[200px] shadow-xl"
+                  onClick={() => onNavigate('shop')}>
+                  Shop Collection
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="text-white border-white hover:bg-white/10 min-w-[200px] backdrop-blur-sm"
+                  onClick={() => onNavigate('collections')}>
+                  View Lookbook
+                </Button>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Carousel Controls */}
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 z-20 flex justify-between px-6 pointer-events-none">
+          <button
+            onClick={prevSlide}
+            className="p-4 hover:bg-white/10 rounded-full transition-colors pointer-events-auto group"
+            aria-label="Previous slide"
+          >
+            <ChevronLeft size={32} className="text-white/50 group-hover:text-white transition-colors" />
+          </button>
+          <button
+            onClick={nextSlide}
+            className="p-4 hover:bg-white/10 rounded-full transition-colors pointer-events-auto group"
+            aria-label="Next slide"
+          >
+            <ChevronRight size={32} className="text-white/50 group-hover:text-white transition-colors" />
+          </button>
+        </div>
+
+        {/* Slide Indicators */}
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 flex space-x-3">
+          {slides.map((_, index) => (
+            <button
+              key={index}
+              onClick={() => setCurrentSlide(index)}
+              className={`h-1.5 transition-all duration-500 ${index === currentSlide ? 'w-12 bg-white' : 'w-3 bg-white/30 hover:bg-white/50'}`}
+              aria-label={`Go to slide ${index + 1}`}
+            />
+          ))}
+        </div>
+
+        {/* Scroll indicator */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center text-white/50 z-20">
+          <div className="w-px h-12 bg-white/20 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-full bg-white animate-[scroll-hint_2s_infinite]" />
+          </div>
+        </div>
+      </section>
+
+      {/* Featured Products */}
+      <section className="py-24 px-6 md:px-20 max-w-[1920px] mx-auto">
+        <div className="flex justify-between items-end mb-12">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 block">
+              Curated Selection
+            </span>
+            <h2 className="text-3xl md:text-4xl font-bold uppercase tracking-tight">
+              Featured
+            </h2>
+          </div>
+          <button
+            onClick={() => onNavigate('shop')}
+            className="text-sm font-medium uppercase tracking-wider flex items-center group">
+
+            View All
+            <ArrowRight
+              size={16}
+              className="ml-2 group-hover:translate-x-1 transition-transform" />
+
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 stagger-children">
+          {featuredProducts.map((product) =>
+            <ProductCard
+              key={product.id}
+              product={product}
+              onClick={() => onProductClick(product)}
+              onQuickAdd={() => onProductClick(product)} />
+
+          )}
+        </div>
+      </section>
+
+      {/* Collection Banner */}
+      <section className="py-4 px-6 md:px-20 max-w-[1920px] mx-auto">
+        <div
+          className="relative aspect-[21/9] md:aspect-[3/1] overflow-hidden group cursor-pointer"
+          onClick={() => onNavigate('collections')}>
+
+          <img
+            src="https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&q=80&w=2000"
+            alt="The Essentials"
+            className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" />
+
+          <div className="absolute inset-0 bg-black/30 group-hover:bg-black/40 transition-colors duration-500" />
+          <div className="absolute inset-0 flex flex-col justify-center items-center text-white">
+            <span className="text-xs font-bold uppercase tracking-[0.3em] mb-4 opacity-80">
+              Collection
+            </span>
+            <h2 className="text-4xl md:text-6xl font-bold uppercase tracking-tighter mb-6 text-center">
+              The Essentials
+            </h2>
+            <span className="flex items-center text-sm font-bold uppercase tracking-widest border-b-2 border-white/50 pb-1 group-hover:border-white transition-colors">
+              Explore{' '}
+              <ArrowRight
+                size={16}
+                className="ml-2 group-hover:translate-x-1 transition-transform" />
+
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* New This Week */}
+      <section className="py-24 px-6 md:px-20 max-w-[1920px] mx-auto">
+        <div className="flex justify-between items-end mb-12">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 block">
+              Just Arrived
+            </span>
+            <h2 className="text-3xl md:text-4xl font-bold uppercase tracking-tight">
+              New This Week
+            </h2>
+          </div>
+          <button
+            onClick={() => onNavigate('shop')}
+            className="text-sm font-medium uppercase tracking-wider flex items-center group">
+
+            View All
+            <ArrowRight
+              size={16}
+              className="ml-2 group-hover:translate-x-1 transition-transform" />
+
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 stagger-children">
+          {newArrivals.map((product) =>
+            <ProductCard
+              key={product.id}
+              product={product}
+              onClick={() => onProductClick(product)}
+              onQuickAdd={() => onProductClick(product)} />
+
+          )}
+        </div>
+      </section>
+
+      {/* Editorial Section */}
+      <section className="bg-[#F8F8F8] py-32 px-6 md:px-20">
+        <div className="max-w-[1920px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 items-center">
+          <div className="order-2 lg:order-1 max-w-xl">
+            <span className="text-xs font-bold uppercase tracking-[0.3em] text-gray-400 mb-6 block">
+              Our Philosophy
+            </span>
+            <h2 className="text-4xl md:text-5xl font-bold uppercase tracking-tight mb-8 leading-tight">
+              Designed for the Modern Minimalist
+            </h2>
+            <p className="text-gray-600 leading-relaxed mb-8 text-lg">
+              We believe in the power of simplicity. Our collections are crafted
+              with precision, using only the finest materials to create timeless
+              pieces that transcend seasons and trends.
+            </p>
+            <p className="text-gray-500 leading-relaxed mb-10">
+              Every garment is designed to be versatile, durable, and
+              effortlessly stylish— building blocks for a wardrobe that lasts.
+            </p>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => onNavigate('collections')}>
+
+              Our Story
+            </Button>
+          </div>
+          <div className="order-1 lg:order-2 grid grid-cols-12 gap-4">
+            <div className="col-span-7">
+              <img
+                src="https://images.unsplash.com/photo-1594932224018-04004203a30f?auto=format&fit=crop&q=80&w=800"
+                alt="Editorial 1"
+                className="w-full aspect-[3/4] object-cover" />
+
+            </div>
+            <div className="col-span-5 pt-16">
+              <img
+                src="https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&q=80&w=800"
+                alt="Editorial 2"
+                className="w-full aspect-[3/4] object-cover mb-4" />
+
+              <div className="bg-black text-white p-6">
+                <p className="text-xs uppercase tracking-widest mb-2">
+                  Since 2020
+                </p>
+                <p className="text-2xl font-bold">XIV</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Newsletter Section */}
+      <section className="py-24 px-6 md:px-20 max-w-[1920px] mx-auto text-center">
+        <span className="text-xs font-bold uppercase tracking-[0.3em] text-gray-400 mb-4 block">
+          Stay Updated
+        </span>
+        <h2 className="text-3xl md:text-4xl font-bold uppercase tracking-tight mb-4">
+          Join the Community
+        </h2>
+        <p className="text-gray-500 max-w-md mx-auto mb-8">
+          Subscribe to receive updates on new arrivals, exclusive offers, and
+          style inspiration.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
+          <input
+            type="email"
+            placeholder="Enter your email"
+            className="flex-1 border border-gray-200 px-6 py-4 text-sm focus:outline-none focus:border-black transition-colors" />
+
+          <Button variant="primary" size="lg">
+            Subscribe
+          </Button>
+        </div>
+      </section>
+    </div>);
+
+}
